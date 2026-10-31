@@ -2,6 +2,8 @@ import os
 import discord
 from discord.ext import commands
 from dotenv import load_dotenv
+from threading import Thread
+from http.server import BaseHTTPRequestHandler, HTTPServer
 
 load_dotenv()
 
@@ -15,42 +17,50 @@ intents.message_content = True
 
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-
 @bot.event
 async def on_ready():
     print(f"Bot conectado como {bot.user} (ID: {bot.user.id})")
-    print("------")
-
 
 @bot.event
 async def on_member_join(member: discord.Member):
-    # 1) manda DM
     try:
         await member.send(f"oi {member.name}! bem-vindo(a) ao servidor 💫")
     except discord.Forbidden:
-        print(f"Não consegui mandar DM pra {member.name} (DM fechada)")
+        pass
 
-    # 2) manda mensagem no chat-geral
     canal = bot.get_channel(CHAT_GERAL_ID)
     if canal is None:
-        print("Canal chat-geral não encontrado. Confere o CHAT_GERAL_ID no .env")
         return
 
-    msg = await canal.send(
-        f"{member.mention} entrou no servidor! seja bem-vindo(a) 🎉"
-    )
+    msg = await canal.send(f"{member.mention} entrou no servidor! seja bem-vindo(a) 🎉")
 
-    # 3) fixa a nova mensagem
     try:
         pins = await canal.pins()
         if len(pins) >= 50:
             pins_sem_sistema = [p for p in pins if p.type == discord.MessageType.default]
             if pins_sem_sistema:
                 await pins_sem_sistema[-1].unpin()
-
         await msg.pin()
     except discord.Forbidden:
-        print("Sem permissão pra gerenciar/fixar mensagens. Verifica Manage Messages.")
+        pass
 
+# --- Servidor web falso pro Render não dormir ---
+class WebServer(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.send_header("Content-type", "text/html")
+        self.end_headers()
+        self.wfile.write(b"Bot online!")
 
-bot.run(TOKEN)
+def run_server():
+    port = int(os.environ.get("PORT", 8080))
+    server = HTTPServer(("0.0.0.0", port), WebServer)
+    server.serve_forever()
+
+def keep_alive():
+    t = Thread(target=run_server)
+    t.start()
+
+if __name__ == "__main__":
+    keep_alive()
+    bot.run(TOKEN)
